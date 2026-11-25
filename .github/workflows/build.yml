@@ -4,11 +4,12 @@ name: Build KeepAwake Dylib
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-15-intel
 
     steps:
       - name: Checkout source
@@ -17,12 +18,13 @@ jobs:
       - name: Setup Theos
         uses: beerpiss/theos-action@v1
 
-      - name: Build dylib
+      - name: Build KeepAwake
         run: |
           make clean
           make
 
           mkdir -p dist
+
           find . -name "KeepAwake.dylib" \
             -not -path "./dist/*" \
             -exec cp {} dist/KeepAwake.dylib \;
@@ -30,7 +32,7 @@ jobs:
           test -s dist/KeepAwake.dylib
           file dist/KeepAwake.dylib
 
-      - name: Upload dylib
+      - name: Upload KeepAwake dylib
         uses: actions/upload-artifact@v4
         with:
           name: KeepAwake-iOS

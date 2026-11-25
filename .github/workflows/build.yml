@@ -20,22 +20,49 @@ jobs:
 
       - name: Build KeepAwake
         run: |
+          set -e
+
           make clean
           make
 
           mkdir -p dist
 
-          find . -type f -name "KeepAwake.dylib" \
+          DYLIB=$(find . -type f -name "KeepAwake.dylib" \
             -not -path "*.dSYM/*" \
             -not -path "*/dist/*" \
-            -exec cp {} dist/KeepAwake.dylib \;
+            | head -n 1)
 
-          test -s dist/KeepAwake.dylib
+          if [ -z "$DYLIB" ]; then
+            echo "ERROR: KeepAwake.dylib not found"
+            exit 1
+          fi
+
+          cp "$DYLIB" dist/KeepAwake.dylib
+
+          echo "=== Original dependencies ==="
+          otool -L dist/KeepAwake.dylib
+
+          if otool -L dist/KeepAwake.dylib | grep -q "/Library/Frameworks/CydiaSubstrate.framework/CydiaSubstrate"; then
+            install_name_tool -change \
+              /Library/Frameworks/CydiaSubstrate.framework/CydiaSubstrate \
+              @rpath/CydiaSubstrate.framework/CydiaSubstrate \
+              dist/KeepAwake.dylib
+          fi
+
+          echo "=== Final dependencies ==="
+          otool -L dist/KeepAwake.dylib
 
           file dist/KeepAwake.dylib
 
+          test -s dist/KeepAwake.dylib
+
           if ! file dist/KeepAwake.dylib | grep -q "dynamically linked shared library"; then
-            echo "ERROR: Not a valid dynamic library"
+            echo "ERROR: Invalid dylib"
+            exit 1
+          fi
+
+          if otool -L dist/KeepAwake.dylib | grep -q "/Library/Frameworks/CydiaSubstrate.framework/CydiaSubstrate"; then
+            echo "ERROR: CydiaSubstrate path was not fixed"
             exit 1
           fi
 

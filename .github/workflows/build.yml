@@ -25,12 +25,19 @@ jobs:
 
           mkdir -p dist
 
-          find . -name "KeepAwake.dylib" \
-            -not -path "./dist/*" \
+          find . -type f -name "KeepAwake.dylib" \
+            -not -path "*.dSYM/*" \
+            -not -path "*/dist/*" \
             -exec cp {} dist/KeepAwake.dylib \;
 
           test -s dist/KeepAwake.dylib
+
           file dist/KeepAwake.dylib
+
+          if ! file dist/KeepAwake.dylib | grep -q "dynamically linked shared library"; then
+            echo "ERROR: Not a valid dynamic library"
+            exit 1
+          fi
 
       - name: Upload KeepAwake dylib
         uses: actions/upload-artifact@v4

@@ -1,80 +1,38 @@
-
-name: Build KeepAwake Dylib
+name: Build KeepAwake
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: macos-15-intel
-
+    runs-on: macos-latest
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Theos
-        uses: beerpiss/theos-action@v1
-
-      - name: Build KeepAwake
-        shell: bash
+      - name: Build dylib
         run: |
-          set -euo pipefail
+          xcrun -sdk iphoneos clang \
+            -arch arm64 \
+            -dynamiclib \
+            -fobjc-arc \
+            -O2 \
+            -miphoneos-version-min=14.0 \
+            -framework UIKit -framework Foundation \
+            -install_name @rpath/KeepAwake.dylib \
+            -o KeepAwake.dylib KeepAwake.m
 
-          echo "=== Building tweak ==="
-          make clean
-          make
+      - name: Ad-hoc sign
+        run: codesign -f -s - KeepAwake.dylib
 
-          echo "=== Finding dylib ==="
-
-          DYLIB=""
-
-          while IFS= read -r -d '' f; do
-            if file "$f" | grep -q "Mach-O.*dynamically linked shared library"; then
-              DYLIB="$f"
-              break
-            fi
-          done < <(find . -type f -name "KeepAwake.dylib" \
-            -not -path "*/.theos/obj/*/*.dSYM/*" \
-            -print0)
-
-          if [ -z "$DYLIB" ]; then
-            echo "ERROR: Valid KeepAwake.dylib not found"
-            exit 1
+      - name: Check dependencies
+        run: |
+          otool -L KeepAwake.dylib
+          if otool -L KeepAwake.dylib | grep -qi substrate; then
+            echo "Còn phụ thuộc Substrate!"; exit 1
           fi
 
-          mkdir -p dist
-          cp "$DYLIB" dist/KeepAwake.dylib
-
-          echo "=== Checking architecture ==="
-          file dist/KeepAwake.dylib
-
-          echo "=== Checking dependencies ==="
-          otool -L dist/KeepAwake.dylib
-
-          OLD="/Library/Frameworks/CydiaSubstrate.framework/CydiaSubstrate"
-          NEW="@rpath/CydiaSubstrate.framework/CydiaSubstrate"
-
-          if otool -L dist/KeepAwake.dylib | grep -Fq "$OLD"; then
-            echo "=== Fixing CydiaSubstrate path ==="
-            install_name_tool -change "$OLD" "$NEW" dist/KeepAwake.dylib
-          fi
-
-          echo "=== Final dependency check ==="
-          otool -L dist/KeepAwake.dylib
-
-          if otool -L dist/KeepAwake.dylib | grep -Fq "$OLD"; then
-            echo "ERROR: Absolute CydiaSubstrate path remains"
-            exit 1
-          fi
-
-          echo "=== Build verification completed ==="
-
-      - name: Upload KeepAwake dylib
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: KeepAwake-iOS
-          path: dist/KeepAwake.dylib
-          if-no-files-found: error
+          name: KeepAwake
+          path: KeepAwake.dylib

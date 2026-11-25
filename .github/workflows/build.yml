@@ -19,52 +19,58 @@ jobs:
         uses: beerpiss/theos-action@v1
 
       - name: Build KeepAwake
+        shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
+          echo "=== Building tweak ==="
           make clean
           make
 
-          mkdir -p dist
+          echo "=== Finding dylib ==="
 
-          DYLIB=$(find . -type f -name "KeepAwake.dylib" \
-            -not -path "*.dSYM/*" \
-            -not -path "*/dist/*" \
-            | head -n 1)
+          DYLIB=""
+
+          while IFS= read -r -d '' f; do
+            if file "$f" | grep -q "Mach-O.*dynamically linked shared library"; then
+              DYLIB="$f"
+              break
+            fi
+          done < <(find . -type f -name "KeepAwake.dylib" \
+            -not -path "*/.theos/obj/*/*.dSYM/*" \
+            -print0)
 
           if [ -z "$DYLIB" ]; then
-            echo "ERROR: KeepAwake.dylib not found"
+            echo "ERROR: Valid KeepAwake.dylib not found"
             exit 1
           fi
 
+          mkdir -p dist
           cp "$DYLIB" dist/KeepAwake.dylib
 
-          echo "=== Original dependencies ==="
-          otool -L dist/KeepAwake.dylib
-
-          if otool -L dist/KeepAwake.dylib | grep -q "/Library/Frameworks/CydiaSubstrate.framework/CydiaSubstrate"; then
-            install_name_tool -change \
-              /Library/Frameworks/CydiaSubstrate.framework/CydiaSubstrate \
-              @rpath/CydiaSubstrate.framework/CydiaSubstrate \
-              dist/KeepAwake.dylib
-          fi
-
-          echo "=== Final dependencies ==="
-          otool -L dist/KeepAwake.dylib
-
+          echo "=== Checking architecture ==="
           file dist/KeepAwake.dylib
 
-          test -s dist/KeepAwake.dylib
+          echo "=== Checking dependencies ==="
+          otool -L dist/KeepAwake.dylib
 
-          if ! file dist/KeepAwake.dylib | grep -q "dynamically linked shared library"; then
-            echo "ERROR: Invalid dylib"
+          OLD="/Library/Frameworks/CydiaSubstrate.framework/CydiaSubstrate"
+          NEW="@rpath/CydiaSubstrate.framework/CydiaSubstrate"
+
+          if otool -L dist/KeepAwake.dylib | grep -Fq "$OLD"; then
+            echo "=== Fixing CydiaSubstrate path ==="
+            install_name_tool -change "$OLD" "$NEW" dist/KeepAwake.dylib
+          fi
+
+          echo "=== Final dependency check ==="
+          otool -L dist/KeepAwake.dylib
+
+          if otool -L dist/KeepAwake.dylib | grep -Fq "$OLD"; then
+            echo "ERROR: Absolute CydiaSubstrate path remains"
             exit 1
           fi
 
-          if otool -L dist/KeepAwake.dylib | grep -q "/Library/Frameworks/CydiaSubstrate.framework/CydiaSubstrate"; then
-            echo "ERROR: CydiaSubstrate path was not fixed"
-            exit 1
-          fi
+          echo "=== Build verification completed ==="
 
       - name: Upload KeepAwake dylib
         uses: actions/upload-artifact@v4

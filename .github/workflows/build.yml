@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build dylib
+      - name: Build dylib (không ký sẵn)
         run: |
           xcrun -sdk iphoneos clang \
             -arch arm64 \
@@ -19,15 +19,15 @@ jobs:
             -O2 \
             -miphoneos-version-min=14.0 \
             -framework UIKit -framework Foundation \
+            -Wl,-no_adhoc_codesign \
             -install_name @rpath/KeepAwake.dylib \
             -o KeepAwake.dylib KeepAwake.m
 
-      - name: Ad-hoc sign
-        run: codesign -f -s - KeepAwake.dylib
-
-      - name: Check dependencies
+      - name: Check dylib
         run: |
+          lipo -info KeepAwake.dylib
           otool -L KeepAwake.dylib
+          codesign -dv KeepAwake.dylib 2>&1 || true
           if otool -L KeepAwake.dylib | grep -qi substrate; then
             echo "Còn phụ thuộc Substrate!"; exit 1
           fi
